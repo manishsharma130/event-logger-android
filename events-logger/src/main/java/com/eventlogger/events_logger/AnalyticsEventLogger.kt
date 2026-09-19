@@ -15,7 +15,34 @@ import android.util.Log
  *
  * Logging is controlled by [isEnabled] (on by default). Set it from the host app,
  * for example `AnalyticsEventLogger.isEnabled = BuildConfig.DEBUG`, so a published
- * release AAR still works in the app's debug builds. The API never throws to the caller.
+ * release AAR still works in the app's debug builds.
+ *
+ * Event payloads are limited to 3,800 UTF-8 bytes. Parameters that would exceed the
+ * limit, or cannot be represented as JSON, are skipped. Logging and conversion errors
+ * are caught so this API does not throw to the caller.
+ *
+ * Example using a predefined provider and Android [Bundle]:
+ * ```kotlin
+ * val params = Bundle().apply {
+ *     putString("product_id", "P1001")
+ *     putDouble("price", 999.0)
+ * }
+ *
+ * AnalyticsEventLogger.logEvent(
+ *     eventTag = AnalyticsEventTag.GOOGLE_ANALYTICS,
+ *     eventName = "purchase",
+ *     eventParams = params
+ * )
+ * ```
+ *
+ * Example using a custom provider and map parameters:
+ * ```kotlin
+ * AnalyticsEventLogger.logEvent(
+ *     eventTag = "clevertap",
+ *     eventName = "login",
+ *     eventParams = mapOf("method" to "email")
+ * )
+ * ```
  */
 object AnalyticsEventLogger {
 
@@ -72,7 +99,14 @@ object AnalyticsEventLogger {
 
     /**
      * Logs an analytics event with parameters supplied as a map.
-     * The map is converted directly to JSON; the 3,800-byte packing rules are unchanged.
+     *
+     * Nested maps, lists, arrays, JSON objects, JSON arrays, strings, booleans, and numeric
+     * values are supported. Unsupported values are skipped. The 3,800-byte payload limit
+     * is applied after JSON conversion.
+     *
+     * @param eventTag analytics provider
+     * @param eventName event name, such as `"purchase"`
+     * @param eventParams event parameters to convert to JSON
      */
     @JvmStatic
     fun logEvent(
@@ -85,6 +119,14 @@ object AnalyticsEventLogger {
 
     /**
      * Logs an analytics event for any provider tag with parameters supplied as a map.
+     *
+     * Nested maps, lists, arrays, JSON objects, JSON arrays, strings, booleans, and numeric
+     * values are supported. Unsupported values are skipped. The 3,800-byte payload limit
+     * is applied after JSON conversion.
+     *
+     * @param eventTag analytics provider identifier, including custom values such as `"clevertap"`
+     * @param eventName event name, such as `"purchase"`
+     * @param eventParams event parameters to convert to JSON
      */
     @JvmStatic
     fun logEvent(

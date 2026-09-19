@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.dokka.javadoc)
     `maven-publish`
     signing
 }
@@ -37,11 +38,18 @@ dependencies {
     testImplementation("org.json:json:20250107")
 }
 
+val dokkaJavadocJar by tasks.registering(Jar::class) {
+    description = "Creates a Javadoc JAR using Dokka"
+    from(tasks.dokkaGeneratePublicationJavadoc.flatMap { it.outputDirectory })
+    archiveClassifier.set("javadoc")
+}
+
 afterEvaluate {
     publishing {
         publications {
             create<MavenPublication>("release") {
                 from(components["release"])
+                artifact(dokkaJavadocJar)
                 groupId = project.group.toString()
                 artifactId = providers.gradleProperty("POM_ARTIFACT_ID").get()
                 version = project.version.toString()

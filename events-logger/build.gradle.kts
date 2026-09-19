@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
     `maven-publish`
+    signing
 }
 
 group = providers.gradleProperty("GROUP").get()
@@ -87,5 +88,10 @@ afterEvaluate {
                 }
             }
         }
+    }
+
+    signing {
+        useGpgCmd()
+        sign(publishing.publications["release"])
     }
 }

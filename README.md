@@ -6,27 +6,105 @@ The library does not send events to Google Analytics, Branch, MoEngage, or any o
 
 ## Installation
 
-After the library is published to Maven Central, add:
+The minimum supported Android version is API 21. Choose one of the following approaches based on whether the library should be present in release builds.
+
+### Approach 1: include only in debug builds (recommended)
+
+Use `debugImplementation` to exclude the library completely from the release APK:
 
 ```kotlin
-implementation("io.github.manishsharma130:events-logger:0.1.0")
+dependencies {
+    debugImplementation("io.github.manishsharma130:events-logger:0.1.0")
+}
 ```
 
-The minimum supported Android version is API 21.
+Code under `src/main` is compiled for both debug and release, so it cannot directly reference a debug-only dependency. Use matching build-specific wrappers instead.
 
-To test the library locally:
+Create the debug implementation at `app/src/debug/java/com/example/app/AppEventLogger.kt`:
+
+```kotlin
+package com.example.app
+
+import com.eventlogger.events_logger.AnalyticsEventLogger
+
+object AppEventLogger {
+    fun logEvent(
+        eventTag: String,
+        eventName: String,
+        eventParams: Map<String, Any?> = emptyMap()
+    ) {
+        AnalyticsEventLogger.logEvent(eventTag, eventName, eventParams)
+    }
+}
+```
+
+Create the release no-op implementation at `app/src/release/java/com/example/app/AppEventLogger.kt`:
+
+```kotlin
+package com.example.app
+
+object AppEventLogger {
+    fun logEvent(
+        eventTag: String,
+        eventName: String,
+        eventParams: Map<String, Any?> = emptyMap()
+    ) {
+        // Intentionally disabled in release builds.
+    }
+}
+```
+
+Both wrappers must have the same package, object name, and function signature. Application code under `src/main` calls only the wrapper:
+
+```kotlin
+AppEventLogger.logEvent(
+    eventTag = "google_analytics",
+    eventName = "purchase",
+    eventParams = mapOf("product_id" to "P1001")
+)
+```
+
+Android uses `src/main` plus `src/debug` for debug builds, and `src/main` plus `src/release` for release builds. The debug wrapper forwards events to this library; the release wrapper does nothing.
+
+### Approach 2: include in all builds and disable release logging
+
+Use `implementation` when direct access from `src/main` is preferred:
+
+```kotlin
+dependencies {
+    implementation("io.github.manishsharma130:events-logger:0.1.0")
+}
+```
+
+Enable logging only for debug builds:
+
+```kotlin
+AnalyticsEventLogger.isEnabled = BuildConfig.DEBUG
+```
+
+With this approach the library remains in the release APK, but `logEvent` returns without logging when `isEnabled` is `false`.
+
+### Test a locally published version
+
+Publish the library to your local Maven repository:
 
 ```bash
 ./gradlew :events-logger:publishToMavenLocal
 ```
 
-Add `mavenLocal()` to the consuming project's repositories:
+Then add `mavenLocal()` to the consuming project's `settings.gradle.kts`:
 
 ```kotlin
-repositories {
-    mavenLocal()
+dependencyResolutionManagement {
+    repositories {
+        mavenLocal()
+        google()
+        mavenCentral()
+    }
 }
 ```
+
+For Groovy `settings.gradle`, use the same repository order without Kotlin-specific syntax.
 
 ## Usage
 
@@ -65,15 +143,9 @@ Each event is written as one JSON line using the Logcat tag `AnalyticsEvent`:
 
 The library keeps output within 3,800 UTF-8 bytes. Parameters that do not fit are skipped, and the JSON remains valid.
 
-## Disable production logging
+## Production behavior
 
-Logging is enabled by default. Set it from your application so release builds remain quiet:
-
-```kotlin
-AnalyticsEventLogger.isEnabled = BuildConfig.DEBUG
-```
-
-The logger catches conversion and logging errors so it does not crash the host application.
+Logging is enabled by default. Use Approach 1 to exclude the library from release APKs, or Approach 2 with `BuildConfig.DEBUG` to keep release builds quiet. The logger catches conversion and logging errors so it does not crash the host application.
 
 ## Tests
 

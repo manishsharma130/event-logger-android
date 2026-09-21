@@ -1,3 +1,5 @@
+import java.security.MessageDigest
+
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
@@ -80,6 +82,13 @@ afterEvaluate {
                 }
             }
         }
+        repositories {
+            maven {
+                name = "centralBundle"
+                url = layout.buildDirectory.dir("central-staging").get().asFile.toURI()
+            }
+        }
+
         val publishUrl = providers.gradleProperty("PUBLISH_URL")
         if (publishUrl.isPresent) {
             repositories {
@@ -102,4 +111,65 @@ afterEvaluate {
         useGpgCmd()
         sign(publishing.publications["release"])
     }
+}
+
+val centralStagingDirectory = layout.buildDirectory.dir("central-staging")
+val centralVersionDirectory = centralStagingDirectory.map {
+    it.dir(
+        "${project.group.toString().replace('.', '/')}/" +
+            "${providers.gradleProperty("POM_ARTIFACT_ID").get()}/${project.version}",
+    )
+}
+
+val cleanCentralStaging by tasks.registering(Delete::class) {
+    delete(centralStagingDirectory)
+}
+
+tasks.matching { it.name == "publishReleasePublicationToCentralBundleRepository" }.configureEach {
+    dependsOn(cleanCentralStaging)
+}
+
+val generateCentralBundleChecksums by tasks.registering {
+    description = "Generates MD5 and SHA-1 checksums required by Maven Central"
+    group = "publishing"
+    dependsOn("publishReleasePublicationToCentralBundleRepository")
+
+    doLast {
+        val versionDirectory = centralVersionDirectory.get().asFile
+        check(versionDirectory.isDirectory) {
+            "Central staging directory was not generated: $versionDirectory"
+        }
+
+        versionDirectory.listFiles()
+            ?.filter {
+                it.isFile && it.extension !in setOf("md5", "sha1", "sha256", "sha512")
+            }
+            ?.forEach { artifact ->
+                listOf("MD5" to "md5", "SHA-1" to "sha1").forEach { (algorithm, extension) ->
+                    val digest = MessageDigest.getInstance(algorithm)
+                        .digest(artifact.readBytes())
+                        .joinToString("") { byte -> "%02x".format(byte) }
+                    artifact.resolveSibling("${artifact.name}.$extension").writeText(digest)
+                }
+            }
+    }
+}
+
+val centralBundle by tasks.registering(Zip::class) {
+    description = "Creates a Maven Central Portal deployment bundle"
+    group = "publishing"
+    dependsOn(generateCentralBundleChecksums)
+
+    from(centralStagingDirectory) {
+        include(
+            "${project.group.toString().replace('.', '/')}/" +
+                "${providers.gradleProperty("POM_ARTIFACT_ID").get()}/${project.version}/**",
+        )
+    }
+    destinationDirectory.set(layout.buildDirectory.dir("distributions"))
+    archiveFileName.set(
+        providers.gradleProperty("POM_ARTIFACT_ID").zip(
+            providers.gradleProperty("VERSION_NAME"),
+        ) { artifactId, version -> "$artifactId-$version-central-bundle.zip" },
+    )
 }
